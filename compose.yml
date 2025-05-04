@@ -1,0 +1,18 @@
+version: '3.9'
+services:
+  server:
+    container_name: vk-server
+    build:
+      context: ./
+      dockerfile: server.dockerfile
+    ports:
+      - "5001:5001"
+    environment:
+      - CONFIG_FILE_PATH=/app/config.json
+    volumes:
+      - ./config.json:/app/config.json
+    networks:
+      backend:
+
+networks:
+  backend:

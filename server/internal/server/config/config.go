@@ -10,10 +10,10 @@ import (
 	"go.uber.org/zap"
 )
 
-var configPath = os.Getenv("CONFIG_PATH")
+var configPath = os.Getenv("CONFIG_FILE_PATH")
 
 type Config struct {
-	GRPC *Controller `config:"grpc" toml:"grpc" yaml:"grpc" json:"grpc"`
+	Controller *Controller `config:"controller" toml:"controller" yaml:"controller" json:"controller"`
 }
 
 func New() (*Config, error) {

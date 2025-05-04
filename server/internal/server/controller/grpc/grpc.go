@@ -2,7 +2,6 @@ package grpc
 
 import (
 	"context"
-	"errors"
 	"net"
 	"time"
 
@@ -13,31 +12,32 @@ import (
 	"google.golang.org/grpc"
 
 	pb "github.com/Grbisba/vk-enrollment-task/protogen"
-
-	"github.com/Grbisba/vk-enrollment-task/client/internal/config"
-	"github.com/Grbisba/vk-enrollment-task/client/internal/controller"
-	"github.com/Grbisba/vk-enrollment-task/client/internal/service"
+	"github.com/Grbisba/vk-enrollment-task/server/internal/server/config"
+	"github.com/Grbisba/vk-enrollment-task/server/internal/server/controller"
+	"github.com/Grbisba/vk-enrollment-task/server/internal/server/eventbus"
+	"github.com/Grbisba/vk-enrollment-task/subpub"
 )
 
 var (
 	_ controller.Controller = (*Controller)(nil)
-	_ pb.PubSubClient       = (*Controller)(nil)
+	_ pb.PubSubServer       = (*Controller)(nil)
 )
 
 type Controller struct {
+	pb.UnimplementedPubSubServer
 	log      *zap.Logger
 	server   *grpc.Server
 	cfg      *config.Controller
 	listener net.Listener
-	service  service.Service
+	eventBus subpub.SubPub
 }
 
-func newWithConfig(log *zap.Logger, srv service.Service, cfg *config.Controller) (*Controller, error) {
+func newWithConfig(log *zap.Logger, cfg *config.Controller, eBus *eventbus.EventBus) (*Controller, error) {
 	log = log.Named("grpc")
 	ctrl := &Controller{
-		log:     log.Named("controller"),
-		service: srv,
-		cfg:     cfg,
+		log:      log.Named("controller"),
+		cfg:      cfg,
+		eventBus: eBus,
 	}
 
 	err := multierr.Combine(
@@ -47,21 +47,23 @@ func newWithConfig(log *zap.Logger, srv service.Service, cfg *config.Controller)
 	if err != nil {
 		return nil, err
 	}
+
 	return ctrl, nil
 }
 
-func New(log *zap.Logger, srv service.Service, cfg *config.Config) (*Controller, error) {
-	return newWithConfig(log, srv, cfg.GRPC)
+func New(log *zap.Logger, cfg *config.Config, eBus *eventbus.EventBus) (*Controller, error) {
+	return newWithConfig(log, cfg.Controller, eBus)
 }
 
 func (ctrl *Controller) createServer(log *zap.Logger) (err error) {
 	if ctrl == nil {
-		// TODO: move to standalone error
-		return errors.New("nil controller")
+		return errNilController
 	}
+
 	if log == nil {
 		log = zap.L()
 	}
+
 	log = log.Named("internal")
 
 	grpcZap.ReplaceGrpcLoggerV2(log)
@@ -75,7 +77,7 @@ func (ctrl *Controller) createServer(log *zap.Logger) (err error) {
 	}
 
 	ctrl.server = grpc.NewServer(opts...)
-	//pb(ctrl.server, ctrl)
+	pb.RegisterPubSubServer(ctrl.server, ctrl)
 
 	log.Info("successfully created gRPC server")
 	return nil
@@ -84,6 +86,11 @@ func (ctrl *Controller) createServer(log *zap.Logger) (err error) {
 func (ctrl *Controller) createListener() (err error) {
 	ctrl.listener, err = net.Listen("tcp", ctrl.cfg.Bind())
 	if err != nil {
+		ctrl.log.Error(
+			"failed to create listener",
+			zap.Error(err),
+		)
+
 		return err
 	}
 
@@ -100,6 +107,11 @@ func (ctrl *Controller) Start(ctx context.Context) error {
 	go func() {
 		err := ctrl.server.Serve(ctrl.listener)
 		if err != nil {
+			ctrl.log.Error(
+				"failed to start gRPC server",
+				zap.Error(err),
+			)
+
 			cancel(err)
 		}
 	}()
@@ -108,7 +120,20 @@ func (ctrl *Controller) Start(ctx context.Context) error {
 	return ctx.Err()
 }
 
-func (ctrl *Controller) Stop(_ context.Context) error {
+func (ctrl *Controller) Stop(ctx context.Context) error {
 	ctrl.server.GracefulStop()
-	return ctrl.listener.Close()
+	err := multierr.Combine(
+		ctrl.eventBus.Close(ctx),
+		ctrl.listener.Close(),
+	)
+	if err != nil {
+		ctrl.log.Error(
+			"failed to graceful stop gRPC server",
+			zap.Error(err),
+		)
+
+		return err
+	}
+
+	return nil
 }
