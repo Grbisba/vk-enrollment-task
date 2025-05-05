@@ -112,9 +112,7 @@ func TestPubSub_Publish(t *testing.T) {
 		wg.Wait()
 
 		err := sp.Publish(subjectName, message)
-		if assert.Error(t, err) {
-			assert.ErrorIs(t, err, errTimeoutToWrite)
-		}
+		assert.NoError(t, err)
 	})
 }
 

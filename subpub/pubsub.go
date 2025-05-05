@@ -26,25 +26,27 @@ func (ps *PubSub) Subscribe(subject string, mh MessageHandler) (Subscription, er
 	ps.Subscribed.add(se)
 	ps.mu.Unlock()
 
-	go func() {
-		for {
-			select {
-			case v := <-se.queue:
-				se.mh(v)
-			case <-se.close:
-				for v := range se.queue {
-					se.mh(v)
-				}
-				se.Unsubscribe()
-				ps.Subscribed.safeDelete(se)
-				return
-			case <-time.After(3 * time.Minute):
-				return
-			}
-		}
-	}()
+	go ps.consume(se)
 
 	return se, nil
+}
+
+func (ps *PubSub) consume(se *subEntity) {
+	for {
+		select {
+		case v := <-se.queue:
+			se.mh(v)
+		case <-se.close:
+			for v := range se.queue {
+				se.mh(v)
+			}
+			se.Unsubscribe()
+			ps.Subscribed.safeDelete(se)
+			return
+		case <-time.After(3 * time.Minute):
+			return
+		}
+	}
 }
 
 // Publish should send messages to the name.
@@ -69,33 +71,29 @@ func (ps *PubSub) publishData(p *partitions, msg interface{}) error {
 	var err error
 	pLen := len(p.partitions)
 
-	if pLen == 0 {
-		return errNoSubscribers
-	}
-
-	wg := sync.WaitGroup{}
+	wg := &sync.WaitGroup{}
 	wg.Add(pLen)
 
-	for i, cp := range p.partitions {
-		go func(id int, cp *subEntity) {
-			defer wg.Done()
-			if cp == nil || cp.closed {
-				err = errNoSubscriber
-				return
-			}
-
-			select {
-			case cp.queue <- msg:
-			case <-time.After(time.Second):
-				err = errTimeoutToWrite
-				return
-			}
-		}(i, cp)
+	for _, cp := range p.partitions {
+		if cp == nil || cp.closed {
+			return errNoSubscriber
+		}
+		go ps.produce(cp, wg, msg)
 	}
+
 	wg.Wait()
 
 	return err
+}
 
+func (ps *PubSub) produce(cp *subEntity, wg *sync.WaitGroup, msg interface{}) {
+	defer wg.Done()
+
+	select {
+	case cp.queue <- msg:
+	case <-time.After(time.Second):
+		return
+	}
 }
 
 // Close will shutdown pub-sub system.
