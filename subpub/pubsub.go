@@ -59,20 +59,8 @@ func (ps *PubSub) Publish(subject string, msg interface{}) error {
 		return errNoSubscribers
 	}
 
-	err := ps.publishData(p, msg)
-	if err != nil {
-		return err
-	}
-
-	return nil
-}
-
-func (ps *PubSub) publishData(p *partitions, msg interface{}) error {
-	var err error
-	pLen := len(p.partitions)
-
 	wg := &sync.WaitGroup{}
-	wg.Add(pLen)
+	wg.Add(len(p.partitions))
 
 	for _, cp := range p.partitions {
 		if cp == nil || cp.closed {
@@ -83,7 +71,7 @@ func (ps *PubSub) publishData(p *partitions, msg interface{}) error {
 
 	wg.Wait()
 
-	return err
+	return nil
 }
 
 func (ps *PubSub) produce(cp *subEntity, wg *sync.WaitGroup, msg interface{}) {

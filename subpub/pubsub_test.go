@@ -26,7 +26,7 @@ func TestPubSub_NewPubSub(t *testing.T) {
 }
 
 func TestPubSub_Subscribe(t *testing.T) {
-	t.Run("positive", func(t *testing.T) {
+	t.Run("positive:interface", func(t *testing.T) {
 		sp := NewSubPub()
 
 		sub, err := sp.Subscribe(subjectName, handlerFunc)
@@ -35,7 +35,7 @@ func TestPubSub_Subscribe(t *testing.T) {
 			sub.Unsubscribe()
 		})
 	})
-	t.Run("positive", func(t *testing.T) {
+	t.Run("positive:structure", func(t *testing.T) {
 		sp := &PubSub{
 			mu:         sync.Mutex{},
 			Subscribed: newSubscribers(),
@@ -44,13 +44,39 @@ func TestPubSub_Subscribe(t *testing.T) {
 		_, err := sp.Subscribe(subjectName, handlerFunc)
 		assert.NoError(t, err)
 
-		sp.Subscribed.add(newSubEntity(subjectName, handlerFunc))
-		se := sp.Subscribed.get(subjectName).get(0)
+		se := newSubEntity(subjectName, handlerFunc)
+		sp.Subscribed.add(se)
+		gotSe := sp.Subscribed.get(subjectName).get(se.id)
 
 		go func() {
-			se.close <- struct{}{}
-			se.queue <- message
+			gotSe.close <- struct{}{}
+			gotSe.queue <- message
 		}()
+	})
+	t.Run("positive", func(t *testing.T) {
+		sp := &PubSub{
+			mu:         sync.Mutex{},
+			Subscribed: newSubscribers(),
+		}
+
+		sub1, err := sp.Subscribe(subjectName, handlerFunc)
+		assert.NoError(t, err)
+
+		sub2, err := sp.Subscribe(subjectName, handlerFunc)
+		assert.NoError(t, err)
+
+		sub1.Unsubscribe()
+
+		sub3, err := sp.Subscribe(subjectName, handlerFunc)
+		assert.NoError(t, err)
+
+		sub2.Unsubscribe()
+		sub3.Unsubscribe()
+
+		sub4, err := sp.Subscribe(subjectName, handlerFunc)
+		assert.NoError(t, err)
+
+		sub4.Unsubscribe()
 	})
 }
 
@@ -98,15 +124,16 @@ func TestPubSub_Publish(t *testing.T) {
 			Subscribed: newSubscribers(),
 		}
 
-		sp.Subscribed.add(newSubEntity(subjectName, handlerFunc))
-		se := sp.Subscribed.get(subjectName).get(0)
+		se := newSubEntity(subjectName, handlerFunc)
+		sp.Subscribed.add(se)
+		gotSe := sp.Subscribed.get(subjectName).get(se.id)
 
 		wg := sync.WaitGroup{}
 		wg.Add(100)
 		for i := 0; i <= 100; i++ {
 			go func() {
 				defer wg.Done()
-				se.queue <- message
+				gotSe.queue <- message
 			}()
 		}
 		wg.Wait()

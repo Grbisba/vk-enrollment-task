@@ -3,6 +3,7 @@ module github.com/Grbisba/vk-enrollment-task
 go 1.24.2
 
 require (
+	github.com/google/uuid v1.6.0
 	github.com/grpc-ecosystem/go-grpc-middleware v1.4.0
 	github.com/heetch/confita v0.10.0
 	github.com/pkg/errors v0.9.1

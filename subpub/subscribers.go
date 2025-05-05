@@ -1,19 +1,22 @@
 package subpub
 
 import (
+	"fmt"
 	"sync"
+
+	"github.com/google/uuid"
 )
 
 var _ Subscription = (*subEntity)(nil)
 
 type subEntity struct {
 	once   sync.Once
+	id     uuid.UUID
 	mh     MessageHandler
 	name   string
 	close  chan struct{}
 	closed bool
 	queue  chan interface{}
-	id     int
 }
 
 func (s *subEntity) Unsubscribe() {
@@ -32,6 +35,7 @@ func newSubEntity(subject string, mh MessageHandler) *subEntity {
 		close:  make(chan struct{}),
 		queue:  make(chan interface{}, 100),
 		closed: false,
+		id:     uuid.New(),
 	}
 }
 
@@ -42,10 +46,10 @@ type subscribers struct {
 
 type partitions struct {
 	mu         sync.RWMutex
-	partitions map[int]*subEntity
+	partitions map[uuid.UUID]*subEntity
 }
 
-func (p *partitions) get(id int) *subEntity {
+func (p *partitions) get(id uuid.UUID) *subEntity {
 	p.mu.RLock()
 	prtn, ok := p.partitions[id]
 	p.mu.RUnlock()
@@ -64,7 +68,7 @@ func (p *partitions) add(sub *subEntity) {
 	return
 }
 
-func (p *partitions) delete(id int) {
+func (p *partitions) delete(id uuid.UUID) {
 	p.mu.Lock()
 	delete(p.partitions, id)
 	p.mu.Unlock()
@@ -95,11 +99,11 @@ func (s *subscribers) add(entity *subEntity) {
 	if !ok {
 		p = &partitions{
 			mu:         sync.RWMutex{},
-			partitions: make(map[int]*subEntity),
+			partitions: make(map[uuid.UUID]*subEntity),
 		}
 	}
 
-	entity.id = len(p.partitions)
+	fmt.Println(entity.id)
 	p.add(entity)
 
 	s.subs[entity.name] = p

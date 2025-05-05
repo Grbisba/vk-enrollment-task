@@ -5,6 +5,7 @@ import (
 	"sync"
 	"testing"
 
+	"github.com/google/uuid"
 	"github.com/stretchr/testify/assert"
 )
 
@@ -65,15 +66,20 @@ func TestSubscribers_addSubscription(t *testing.T) {
 		assert.Equal(t, 1, len(s.get(subject).partitions))
 		assert.Equal(t, s.get("123"), &partitions{
 			mu:         sync.RWMutex{},
-			partitions: map[int]*subEntity{0: se},
+			partitions: map[uuid.UUID]*subEntity{se.id: se},
 		})
 
-		s.add(se)
+		se2 := newSubEntity(subject, func(msg interface{}) {
+			fmt.Printf("%s recieved message: %s\n", subject, msg)
+		})
+
+		s.add(se2)
 
 		assert.Equal(t, 2, len(s.get(subject).partitions))
+		t.Log(s.get("123"))
 		assert.Equal(t, s.get("123"), &partitions{
 			mu:         sync.RWMutex{},
-			partitions: map[int]*subEntity{0: se, 1: se},
+			partitions: map[uuid.UUID]*subEntity{se.id: se, se2.id: se2},
 		})
 	})
 }
@@ -92,21 +98,25 @@ func TestSubscribers_getSubscription(t *testing.T) {
 		assert.Equal(t, 1, len(s.get(subject).partitions))
 		assert.Equal(t, s.get("123"), &partitions{
 			mu:         sync.RWMutex{},
-			partitions: map[int]*subEntity{0: se},
+			partitions: map[uuid.UUID]*subEntity{se.id: se},
 		})
 
-		s.add(se)
+		se2 := newSubEntity(subject, func(msg interface{}) {
+			fmt.Printf("%s recieved message: %s\n", subject, msg)
+		})
+
+		s.add(se2)
 
 		assert.Equal(t, 2, len(s.get(subject).partitions))
 		assert.Equal(t, s.get("123"), &partitions{
 			mu:         sync.RWMutex{},
-			partitions: map[int]*subEntity{0: se, 1: se},
+			partitions: map[uuid.UUID]*subEntity{se.id: se, se2.id: se2},
 		})
 
 		subs := s.get("123").partitions
 		assert.Equal(t, 2, len(subs))
-		assert.Equal(t, subs[0], se)
-		assert.Equal(t, subs[1], se)
+		assert.Equal(t, subs[se.id], se)
+		assert.Equal(t, subs[se.id], se)
 	})
 }
 
