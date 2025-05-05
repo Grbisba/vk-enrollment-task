@@ -5,3 +5,7 @@ protogen:
 .PHONY: build
 build:
 	go build -o server.o ./server/cmd/server/server.go
+
+.PHONY: run
+run:
+	docker compose up --build -d
